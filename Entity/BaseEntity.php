@@ -33,7 +33,6 @@ class BaseEntity
      */
     public function __construct($timezone = 'Europe/Istanbul') {
 
-
         $new = true;
         foreach ($this as $key => $value) {
             if ($this->date_added !== NULL ) {
@@ -167,15 +166,10 @@ class BaseEntity
      * @since			1.0.1
      * @version         1.0.1
      *
-     * @param           \DateTime       $date_removed
-     *
      * @return          object          $this
      */
-    public function setDateRemoved($date_removed) {
-        if(!$this->setModified('date_removed', $date_removed)->isModified()){
-            return $this;
-        }
-        $this->date_removed = $date_removed;
+    public function setDateRemoved() {
+        $this->date_removed = new \DateTime('now', new \DateTimeZone($this->timezone));
         return $this;
     }
 
@@ -217,17 +211,21 @@ class BaseEntity
      * @since           1.0.1
      * @version         1.0.1
      *
-     * @param           string          $timezone
-     *
      * @return          object          $this
      */
     public function setDateUpdated() {
         $this->date_updated = new \DateTime('now', new \DateTimeZone($this->timezone));
         return $this;
     }
-
+    private function _isJSON($string){
+        return is_string($string) && is_array(json_decode($string, true)) && (json_last_error() == JSON_ERROR_NONE) ? true : false;
+    }
     public function toJson($returnArray = false,$mainClass='')
     {
+        if(method_exists($this,'serialize'))
+        {
+            return $this->serialize();
+        }
         $reflector = new \ReflectionClass(get_class($this));
         $props = $reflector->getProperties(\ReflectionProperty::IS_PRIVATE);
 
@@ -239,7 +237,11 @@ class BaseEntity
         foreach($props as $property)
         {
             $value = $this->variableToFunction($property->getName(),'get',true);
-            if(is_array($value))
+            if($this->_isJson($value))
+            {
+                $value = (array)json_decode($value,true);
+
+            }elseif(is_array($value))
             {
                 $valueData=[];
                 foreach($value as $valueRow)
@@ -251,6 +253,7 @@ class BaseEntity
                             if($this->mainClass!=get_class($valueRow))
                             {
                                 $valueData[]=$valueRow->toJson(true,$this->mainClass);
+
                             }else{
                                 $valueData[]=$valueRow->variableToFunction('id','get',true);
                             }
@@ -280,6 +283,7 @@ class BaseEntity
                     $value= ((array)$value);
                 }
             }
+
             $object[$property->getName()] = $value;
         }
         return $returnArray ? (array)$object : json_encode($object);
@@ -307,12 +311,22 @@ class BaseEntity
                     $myclass = new $type();
                     $myclass->fromJson(json_encode($value));
                     $this->{$this->variableToFunction($property)}($myclass);
+
+                }else{
+                    if(is_object($value))
+                    {
+                        $value = json_encode($value);
+                    }
+                    $this->{$this->variableToFunction($property)}($value);
                 }
+
             }else{
+
                 $this->{$this->variableToFunction($property)}($value);
             }
 
         }
+        return $this;
     }
     private function splitAtUpperCase($s) {
         return preg_split('/(?=[A-Z])/', $s, -1, PREG_SPLIT_NO_EMPTY);
@@ -328,7 +342,7 @@ class BaseEntity
     }
     private function dbColumnToVariable($column)
     {
-        return implode('',array_map("ucfirst", explode('_',$column)));
+        return ucfirst(implode('',array_map("ucfirst", explode('_',$column))));
     }
     public function __call($method, $arguments)
     {
